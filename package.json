@@ -1,0 +1,11 @@
+{
+  "name": "react-keys-demo",
+  "version": "1.0.0",
+  "description": "Demo showing how the React `key` prop resets component state, based on https://react.dev/learn/preserving-and-resetting-state#option-2-resetting-state-with-a-key",
+  "scripts": {
+    "start": "live-server --port=5173 --open=/index.html"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>React keys reset state — demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="root"></main>
+
+    <!-- React via CDN so this runs with just `live-server`, no bundler needed -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+    <!-- Babel standalone compiles the JSX in the browser. fine for a demo, never for production. -->
+    <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+    <script type="text/babel" data-presets="react" src="./app.jsx"></script>
+  </body>
+</html>
