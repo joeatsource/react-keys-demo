@@ -1,30 +1,46 @@
 const { useState } = React;
 
-// ─── tiny code-snippet component used for the teaching panels ──────────────
-// renders a monospace block. lines listed in `highlight` get a yellow accent
-// so the diff between variants jumps out.
+// Code renders a snippet with line numbers, an optional highlighted line set,
+// and inline diff marks: any text wrapped in «…» becomes a <mark>, so the
+// changed token within a paired snippet pops without writing JSX-in-JSX.
 function Code({ children, highlight }) {
   const lines = String(children).replace(/\n$/, "").split("\n");
   const set = new Set(highlight ?? []);
   return (
-    <pre className="code" aria-label="code sample">
-      {lines.map((line, i) => (
-        <span
-          key={i}
-          className={"code-line" + (set.has(i + 1) ? " highlight" : "")}
-        >
-          <span className="code-gutter">{i + 1}</span>
-          <span className="code-text">{line || " "}</span>
-        </span>
-      ))}
+    <pre className="code">
+      {lines.map((line, i) => {
+        const parts = line.split(/(«[^»]*»)/g);
+        const rendered = parts.length === 1 && parts[0] === ""
+          ? " "
+          : parts.map((p, j) =>
+              p.startsWith("«") && p.endsWith("»")
+                ? <mark key={j} className="diff-add">{p.slice(1, -1)}</mark>
+                : <React.Fragment key={j}>{p}</React.Fragment>
+            );
+        return (
+          <span key={i} className={"code-line" + (set.has(i + 1) ? " highlight" : "")}>
+            <span className="code-gutter">{i + 1}</span>
+            <span className="code-text">{rendered}</span>
+          </span>
+        );
+      })}
     </pre>
   );
 }
 
-// ─── shared leaf used by the scoreboard demo ────────────────────────────────
+function Steps({ children }) {
+  return <ol className="steps">{children}</ol>;
+}
+
+// per-component mount counters. each new mount of that component grabs the
+// next integer in its useState lazy initializer, so the badge visibly jumps.
+const mountCounters = { Counter: 0, Chat: 0, Step: 0, StepInternal: 0 };
+const nextMountId = (k) => ++mountCounters[k];
+
 function Counter({ person }) {
   const [score, setScore] = useState(0);
   const [hover, setHover] = useState(false);
+  const [mountId] = useState(() => nextMountId("Counter"));
   return (
     <div
       className={"counter" + (hover ? " hover" : "")}
@@ -33,54 +49,75 @@ function Counter({ person }) {
     >
       <h4>{person}'s score: {score}</h4>
       <button onClick={() => setScore(score + 1)}>Add one</button>
+      <div className="instance-tag">mount #{mountId}</div>
     </div>
   );
 }
 
-// ─── demo 1: the canonical scoreboard from the docs ─────────────────────────
 function ScoreboardDemo() {
   const [isPlayerA, setIsPlayerA] = useState(true);
   const person = isPlayerA ? "Taylor" : "Sarah";
-
   return (
     <section className="demo">
-      <h2>1. Two counters, one diff: the <code>key</code></h2>
-      <h3>Same JSX position, but a <code>key</code> tells React "this is a different counter".</h3>
-
+      <h2>1. Scoreboard</h2>
+      <Steps>
+        <li>Click <strong>Add one</strong> a few times</li>
+        <li>Click <strong>Next player</strong></li>
+        <li>Compare the two scores and the <code>mount #</code> badges</li>
+      </Steps>
       <div className="cols">
         <div className="col">
           <header>
-            <strong>Without key</strong>
+            <strong>No key</strong>
             <span className="tag bad">state preserved</span>
           </header>
           <Counter person={person} />
-          <Code highlight={[1]}>{
-`<Counter person={person} />`
-          }</Code>
-          <p className="note">React sees one <code>Counter</code> at this slot. Switching the player keeps the score.</p>
-        </div>
+          <Code highlight={[11]}>{
+`function Counter({ person }) {
+  const [score, setScore] = useState(0);
+  return (
+    <h4>{person}'s score: {score}</h4>
+  );
+}
 
+function Scoreboard() {
+  const [isPlayerA, setIsPlayerA] = useState(true);
+  const person = isPlayerA ? "Taylor" : "Sarah";
+  return <Counter person={person} />;
+}`
+          }</Code>
+          <p className="note">Same instance across switches — same score.</p>
+        </div>
         <div className="col">
           <header>
-            <strong>With <code>key=&#123;person&#125;</code></strong>
+            <strong><code>key=&#123;person&#125;</code></strong>
             <span className="tag good">state reset</span>
           </header>
           <Counter key={person} person={person} />
-          <Code highlight={[1]}>{
-`<Counter key={person} person={person} />`
+          <Code highlight={[11]}>{
+`function Counter({ person }) {
+  const [score, setScore] = useState(0);
+  return (
+    <h4>{person}'s score: {score}</h4>
+  );
+}
+
+function Scoreboard() {
+  const [isPlayerA, setIsPlayerA] = useState(true);
+  const person = isPlayerA ? "Taylor" : "Sarah";
+  return <Counter «key={person} »person={person} />;
+}`
           }</Code>
-          <p className="note">Key changes between "Taylor" and "Sarah" — React unmounts and remounts. Score restarts at 0.</p>
+          <p className="note">Key changes per player — fresh instance, score restarts.</p>
         </div>
       </div>
-
       <div className="actions">
-        <button onClick={() => setIsPlayerA(p => !p)}>Next player (current: {person})</button>
+        <button onClick={() => setIsPlayerA(p => !p)}>Next player ({person})</button>
       </div>
     </section>
   );
 }
 
-// ─── demo 2: messenger / form-reset use case from the docs ──────────────────
 const contacts = [
   { id: 0, name: "Taylor", email: "taylor@mail.com" },
   { id: 1, name: "Alice",  email: "alice@mail.com"  },
@@ -108,6 +145,7 @@ function ContactList({ selectedId, onSelect }) {
 
 function Chat({ contact }) {
   const [text, setText] = useState("");
+  const [mountId] = useState(() => nextMountId("Chat"));
   return (
     <div className="chat">
       <textarea
@@ -116,96 +154,130 @@ function Chat({ contact }) {
         onChange={e => setText(e.target.value)}
       />
       <div className="row">
-        <button>Send to {contact.email}</button>
+        <span className="instance-tag">mount #{mountId}</span>
       </div>
     </div>
   );
 }
 
 function MessengerDemo() {
-  const [to, setTo] = useState(contacts[0]);
-  const [useKey, setUseKey] = useState(false);
-
+  const [toA, setToA] = useState(contacts[0]);
+  const [toB, setToB] = useState(contacts[0]);
   return (
     <section className="demo">
-      <h2>2. Resetting a form with a <code>key</code></h2>
-      <h3>Type a draft, then switch recipients. The toggle controls whether <code>Chat</code> gets <code>key=&#123;to.id&#125;</code>.</h3>
-
-      <div className="messenger">
-        <ContactList selectedId={to.id} onSelect={setTo} />
-        {useKey
-          ? <Chat key={to.id} contact={to} />
-          : <Chat contact={to} />}
-      </div>
-
-      <div className="actions">
-        <button className="ghost" onClick={() => setUseKey(k => !k)}>
-          {useKey ? "Disable key (draft will leak)" : "Enable key (draft will reset)"}
-        </button>
-        <span className={"tag " + (useKey ? "good" : "bad")}>
-          {useKey ? "key on — state resets per recipient" : "no key — draft persists across recipients"}
-        </span>
-      </div>
-
-      <div className="cols teach">
+      <h2>2. Form draft per recipient</h2>
+      <Steps>
+        <li>Type a draft into either textarea</li>
+        <li>Click a different contact</li>
+        <li>Compare the drafts and the <code>mount #</code> badges</li>
+      </Steps>
+      <div className="cols">
         <div className="col">
-          <header><strong>No key</strong><span className="tag bad">leak</span></header>
-          <Code highlight={[2]}>{
-`<ContactList ... />
-<Chat contact={to} />`
+          <header>
+            <strong>No key</strong>
+            <span className="tag bad">draft leaks</span>
+          </header>
+          <div className="messenger">
+            <ContactList selectedId={toA.id} onSelect={setToA} />
+            <Chat contact={toA} />
+          </div>
+          <Code highlight={[16]}>{
+`function Chat({ contact }) {
+  const [text, setText] = useState("");
+  return (
+    <textarea
+      value={text}
+      onChange={e => setText(e.target.value)}
+    />
+  );
+}
+
+function Messenger() {
+  const [to, setTo] = useState(contacts[0]);
+  return (
+    <>
+      <ContactList selectedId={to.id} onSelect={setTo} />
+      <Chat contact={to} />
+    </>
+  );
+}`
           }</Code>
+          <p className="note">Type, switch recipient — same instance, same draft.</p>
         </div>
         <div className="col">
-          <header><strong>Keyed by recipient</strong><span className="tag good">reset</span></header>
-          <Code highlight={[2]}>{
-`<ContactList ... />
-<Chat key={to.id} contact={to} />`
+          <header>
+            <strong><code>key=&#123;to.id&#125;</code></strong>
+            <span className="tag good">resets per recipient</span>
+          </header>
+          <div className="messenger">
+            <ContactList selectedId={toB.id} onSelect={setToB} />
+            <Chat key={toB.id} contact={toB} />
+          </div>
+          <Code highlight={[16]}>{
+`function Chat({ contact }) {
+  const [text, setText] = useState("");
+  return (
+    <textarea
+      value={text}
+      onChange={e => setText(e.target.value)}
+    />
+  );
+}
+
+function Messenger() {
+  const [to, setTo] = useState(contacts[0]);
+  return (
+    <>
+      <ContactList selectedId={to.id} onSelect={setTo} />
+      <Chat «key={to.id} »contact={to} />
+    </>
+  );
+}`
           }</Code>
+          <p className="note">Each recipient gets its own instance, its own draft.</p>
         </div>
       </div>
-
-      <p className="note">
-        Without a key, React reuses the same <code>Chat</code> instance because it sits at the same
-        position in the tree, so the typed draft sticks around. <code>key=&#123;to.id&#125;</code>
-        tells React "this is a different chat", forcing a fresh mount and clearing state.
-      </p>
     </section>
   );
 }
 
-// ─── demo 3: choosing the *right* key (PR-comment exchange) ─────────────────
-// scenario: a `StepComponent` has internal draft state. the parent has two
-// transitions: (a) "toggle status" flips status from editing → readonly and
-// back; (b) "cancel & restart" is a transition that should also reset the
-// draft, but the status itself is unchanged.
-//
-// three side-by-side instances differ ONLY in the key strategy:
-//   A) no key                 – never resets
-//   B) key={status}           – resets on (a) only; misses (b) entirely
-//   C) key={remountKey}       – resets on every transition the parent fires
-//
-// (b) is the case the PR author calls out: "the same step can re-enter the
-// same status and React can still preserve the existing StepComponent
-// instance, including cancelled draft state." a counter incremented per
-// transition is the unambiguous signal.
-
-function StepComponent({ status, label }) {
+function StepComponent({ status }) {
   const [draft, setDraft] = useState("");
+  const [mountId] = useState(() => nextMountId("Step"));
   return (
     <div className="step">
       <div className="step-head">
         <span className={"badge " + status}>{status}</span>
-        <small>{label}</small>
+        <span className="instance-tag">mount #{mountId}</span>
       </div>
       <textarea
         value={draft}
-        placeholder={status === "readonly" ? "(read only)" : "type a draft note..."}
+        placeholder={status === "readonly" ? "(read only)" : "type a draft…"}
         onChange={e => setDraft(e.target.value)}
         readOnly={status === "readonly"}
       />
-      <div className="draft-preview">
-        draft: <code>{draft || "—"}</code>
+    </div>
+  );
+}
+
+// anti-pattern: key on an element *inside* the component you want to reset.
+// the parent's useState is one reconciliation scope above and survives.
+function StepComponentInternalKey({ status }) {
+  const [draft, setDraft] = useState("");
+  const [mountId] = useState(() => nextMountId("StepInternal"));
+  return (
+    <div className="step">
+      <div className="step-head">
+        <span className={"badge " + status}>{status}</span>
+        <span className="instance-tag">mount #{mountId}</span>
       </div>
+      <textarea
+        key={status}
+        value={draft}
+        placeholder={status === "readonly" ? "(read only)" : "type a draft…"}
+        onChange={e => setDraft(e.target.value)}
+        readOnly={status === "readonly"}
+      />
     </div>
   );
 }
@@ -214,106 +286,132 @@ function StepKeysDemo() {
   const [status, setStatus] = useState("editing");
   const [remountKey, setRemountKey] = useState(0);
 
-  // toggle changes both: status flips AND we increment the transition id.
   function toggleStatus() {
     setStatus(s => (s === "editing" ? "readonly" : "editing"));
     setRemountKey(k => k + 1);
   }
-
-  // cancel-and-restart is the trap: status is intentionally unchanged,
-  // only the transition id moves. mirrors "user cancels a draft, returns
-  // to the same status".
   function cancelAndRestart() {
     setRemountKey(k => k + 1);
   }
 
   return (
     <section className="demo">
-      <h2>3. Picking the right <code>key</code> — value <em>and</em> placement</h2>
-      <h3>Inspired by a PR review where <code>key=&#123;`$&#123;step.id&#125;-$&#123;status&#125;`&#125;</code> was suggested as a remount key. Here's why a state-derived key can silently miss transitions.</h3>
+      <h2>3. Picking the right key</h2>
+      <Steps>
+        <li>Type a draft into each of the five textareas</li>
+        <li>Click <strong>Toggle status</strong></li>
+        <li>Click <strong>Cancel &amp; restart</strong></li>
+        <li>Watch which columns reset and which <code>mount #</code> jumps</li>
+      </Steps>
+      <div className="legend">
+        <div><span className="kbd">Toggle status</span> <span className="legend-effect"><code>status</code> flips · <code>remountKey++</code></span></div>
+        <div><span className="kbd">Cancel &amp; restart</span> <span className="legend-effect"><code>status</code> unchanged · <code>remountKey++</code></span></div>
+        <div className="legend-takeaway">→ Only a key that changes on <em>both</em> transitions resets state every time.</div>
+      </div>
 
       <div className="cols three">
         <div className="col">
-          <header>
-            <strong>A. No key</strong>
-            <span className="tag bad">never resets</span>
-          </header>
-          <StepComponent status={status} label="A: no key" />
-          <Code highlight={[1]}>{
-`<StepComponent status={status} />`
-          }</Code>
-          <p className="note">React identifies the component by its position. Neither transition resets the draft.</p>
-        </div>
+          <header><strong>No key</strong><span className="tag bad">never resets</span></header>
+          <StepComponent status={status} />
+          <Code highlight={[9]}>{
+`function StepComponent({ status }) {
+  const [draft, setDraft] = useState("");
+  return <textarea value={draft} … />;
+}
 
+function Stepper() {
+  const [status, setStatus] = useState("editing");
+
+  return <StepComponent status={status} />;
+}`
+          }</Code>
+        </div>
+        <div className="col">
+          <header><strong><code>key=&#123;status&#125;</code></strong><span className="tag warn">misses re-entry</span></header>
+          <StepComponent key={status} status={status} />
+          <Code highlight={[9]}>{
+`function StepComponent({ status }) {
+  const [draft, setDraft] = useState("");
+  return <textarea value={draft} … />;
+}
+
+function Stepper() {
+  const [status, setStatus] = useState("editing");
+  // resets only when status itself changes
+  return <StepComponent «key={status} »status={status} />;
+}`
+          }</Code>
+        </div>
+        <div className="col">
+          <header><strong><code>key=&#123;remountKey&#125;</code></strong><span className="tag good">always resets</span></header>
+          <StepComponent key={remountKey} status={status} />
+          <Code highlight={[10]}>{
+`function StepComponent({ status }) {
+  const [draft, setDraft] = useState("");
+  return <textarea value={draft} … />;
+}
+
+function Stepper() {
+  const [status, setStatus] = useState("editing");
+  «const [remountKey, setRemountKey] = useState(0);»
+  // bump remountKey on every transition you want to reset on
+  return <StepComponent «key={remountKey} »status={status} />;
+}`
+          }</Code>
+        </div>
+      </div>
+
+      <h3>Placement: key on an inner element vs. at the call site</h3>
+      <div className="cols">
         <div className="col">
           <header>
-            <strong>B. <code>key=&#123;status&#125;</code></strong>
-            <span className="tag warn">misses re-entry</span>
+            <strong>Anti-pattern: key inside the component</strong>
+            <span className="tag bad">no effect on state</span>
           </header>
-          <StepComponent key={status} status={status} label="B: key={status}" />
-          <Code highlight={[1]}>{
-`<StepComponent key={status} status={status} />`
-          }</Code>
-          <p className="note">Resets when status flips. <strong>Does not reset</strong> on "cancel &amp; restart" — same status, no new key, draft stays.</p>
-        </div>
+          <StepComponentInternalKey status={status} />
+          <Code highlight={[3, 8]}>{
+`function StepComponent({ status }) {
+  const [draft, setDraft] = useState("");
+  return <textarea «key={status} »value={draft} … />;
+}
 
+function Stepper() {
+  const [status, setStatus] = useState("editing");
+  return <StepComponent status={status} />;
+}`
+          }</Code>
+          <p className="note">
+            React rebuilds the textarea DOM, but <code>draft</code> lives in <code>StepComponent</code>'s
+            <code>useState</code> one scope up — preserved.
+          </p>
+        </div>
         <div className="col">
           <header>
-            <strong>C. <code>key=&#123;remountKey&#125;</code></strong>
-            <span className="tag good">resets on every transition</span>
+            <strong>Correct: key at the call site</strong>
+            <span className="tag good">resets the component</span>
           </header>
-          <StepComponent key={remountKey} status={status} label="C: key={remountKey}" />
-          <Code highlight={[1]}>{
-`<StepComponent key={remountKey} status={status} />`
+          <StepComponent key={remountKey} status={status} />
+          <Code highlight={[8]}>{
+`function StepComponent({ status }) {
+  const [draft, setDraft] = useState("");
+  return <textarea value={draft} … />;
+}
+
+function Stepper() {
+  const [remountKey, setRemountKey] = useState(0);
+  return <StepComponent «key={remountKey} »status={status} />;
+}`
           }</Code>
-          <p className="note">A monotonic transition id, bumped by the parent on each event that should reset. Doesn't depend on coincidental state changes.</p>
+          <p className="note">
+            Parent gives <code>StepComponent</code> a new identity — fresh <code>useState</code>.
+          </p>
         </div>
       </div>
 
       <div className="actions">
-        <button onClick={toggleStatus}>Toggle status (editing ↔ readonly)</button>
-        <button className="ghost" onClick={cancelAndRestart}>Cancel &amp; restart (status unchanged)</button>
-        <span className="tag info">remountKey = {remountKey} · status = {status}</span>
-      </div>
-
-      <div className="callout">
-        <strong>Try it:</strong> type "hello" into all three drafts, then click <em>Cancel &amp; restart</em>.
-        Only column C clears. That's the bug the PR author was guarding against — a state-derived key
-        like <code>$&#123;step.id&#125;-$&#123;status&#125;</code> can repeat for a transition that genuinely
-        needs a fresh component instance.
-      </div>
-
-      <h3 style={{ marginTop: 28 }}>Aside: <em>where</em> the key lives matters too</h3>
-
-      <div className="cols">
-        <div className="col">
-          <header><strong>Key on a wrapper div (reviewer's nudge)</strong></header>
-          <Code highlight={[2]}>{
-`<div
-  key={\`\${step.id}-\${status}\`}
-  className="panel"
-  ref={panelRef}
->
-  <StepComponent ... />
-</div>`
-          }</Code>
-          <p className="note">
-            Conflates the wrapper's identity (DOM node, ref, scroll position) with the child's lifecycle.
-            Works only if the wrapper's <code>key</code> changes for every transition you care about — which
-            brings you right back to the value-of-the-key problem above.
-          </p>
-        </div>
-        <div className="col">
-          <header><strong>Key at the call site of the component you want to remount</strong></header>
-          <Code highlight={[1]}>{
-`<StepComponent key={remountKey} ... />`
-          }</Code>
-          <p className="note">
-            Says exactly what it does: "this <code>StepComponent</code>'s identity is <code>remountKey</code>."
-            The wrapper, its ref, and its DOM stay stable; only the component is recreated. That's the placement
-            React's docs recommend for resetting state.
-          </p>
-        </div>
+        <button onClick={toggleStatus}>Toggle status</button>
+        <button className="ghost" onClick={cancelAndRestart}>Cancel &amp; restart</button>
+        <span className="tag info">remountKey={remountKey} · status={status}</span>
       </div>
     </section>
   );
@@ -324,15 +422,17 @@ function App() {
     <>
       <h1>React keys reset state</h1>
       <p className="lead">
-        A small live demo of{" "}
+        A live demo of{" "}
         <a
           href="https://react.dev/learn/preserving-and-resetting-state#option-2-resetting-state-with-a-key"
           target="_blank"
           rel="noreferrer"
         >
-          “Option 2: Resetting state with a key”
-        </a>{" "}
-        from the React docs. Each demo shows the JSX diff right under the live example so the cause-and-effect is unambiguous.
+          resetting state with a key
+        </a>
+        . Each <code>useState</code> initializes <em>once per mount</em>; a changing <code>key</code>
+        is what tells React to mount a fresh instance. The <code>mount&nbsp;#</code> badge increments
+        on every mount, and each component briefly flashes when it remounts.
       </p>
       <ScoreboardDemo />
       <MessengerDemo />

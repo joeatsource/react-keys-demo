@@ -5,6 +5,14 @@ A small interactive teaching demo for the React docs section
 
 Each demo shows a live behaviour **and** the JSX diff right underneath, with the relevant line highlighted, so the cause-and-effect of the `key` prop is unambiguous.
 
+Several teaching aids make the differences easy to follow:
+
+- a numbered **Try this** strip under each demo title — exactly which buttons to press and in what order;
+- a **`mount #N` badge** per component, backed by a per-component-type counter incremented in `useState`'s lazy initializer (so the number is stable for that instance and visibly jumps on remount);
+- a brief **blue ring/flash** CSS animation on each component wrapper, which fires exactly once per fresh DOM mount;
+- inside paired snippets, the actually-different token (the inserted `key={...}`) is rendered as a **green inline diff mark** within the otherwise yellow call-site line, so the textual diff is zero-effort to spot;
+- demo 3 has a **transitions key** stating exactly what each button does (`Toggle status`: status flips · remountKey++; `Cancel & restart`: status unchanged · remountKey++), making it explicit why a `key={status}` survives the cancel transition but a `key={remountKey}` doesn't.
+
 ## What's in here
 
 1. **Scoreboard** — `<Counter person={person} />` rendered with vs. without `key={person}`. Click "Add one" on both, then "Next player" — the unkeyed counter keeps its score, the keyed one resets.
@@ -16,7 +24,7 @@ Each demo shows a live behaviour **and** the JSX diff right underneath, with the
    - **B. `key={status}`** — resets when status flips, **misses** the "cancel & restart" transition that re-enters the same status.
    - **C. `key={remountKey}` (a transition counter)** — resets on every transition the parent fires.
 
-   The third demo also contrasts placing the key on a wrapping `<div>` vs. on the `StepComponent` call site, and explains why React's docs recommend the latter when the goal is "reset this component's state".
+   The third demo also contrasts placing the key **inside** `StepComponent` — specifically on the textarea itself, the field a naive reader would reach for ("I want the field to reset, so I'll key the field") — vs. placing the key on the `StepComponent` element at its call site. The textarea version still doesn't clear the draft, because the field's value is owned by `StepComponent`'s own `useState`, which is one reconciliation scope above where the key lives. This is the placement point React's docs recommend: put `key` on the component whose state you actually want to reset.
 
 ## Run
 
